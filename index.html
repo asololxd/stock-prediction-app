@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StockPulse — Prediction Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0c1118;
+      --panel: #131a24;
+      --panel-2: #1a2330;
+      --text: #f2f6ff;
+      --muted: #8f9bb3;
+      --green: #00c805;
+      --red: #ff4b55;
+      --accent: #3b82f6;
+      --border: #243244;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top right, #18283f, var(--bg) 38%);
+      color: var(--text);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+    }
+
+    .app {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 1rem;
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: 1fr;
+    }
+
+    .header, .card, .details, .metric {
+      background: linear-gradient(160deg, var(--panel), #111923);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+
+    .header {
+      padding: 1rem;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: .8rem;
+    }
+
+    .title h1 { margin: 0; font-size: 1.2rem; }
+    .title p { margin: .2rem 0 0; color: var(--muted); font-size: .9rem; }
+
+    .search-wrap {
+      display: flex;
+      width: min(450px, 100%);
+      gap: .6rem;
+      flex: 1;
+      justify-content: flex-end;
+    }
+
+    input, button, select {
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+      padding: .7rem .85rem;
+      font-size: .95rem;
+    }
+
+    input { flex: 1; min-width: 130px; }
+    button {
+      background: linear-gradient(180deg, #23a6f8, #2172ff);
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .stocks-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: .8rem;
+    }
+
+    .card { padding: .8rem; }
+    .ticker {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: .35rem;
+    }
+    .ticker strong { font-size: 1rem; }
+    .ticker span { color: var(--muted); font-size: .82rem; }
+
+    .price { font-size: 1.2rem; font-weight: 700; margin-bottom: .25rem; }
+    .change { font-size: .9rem; margin-bottom: .5rem; font-weight: 600; }
+    .positive { color: var(--green); }
+    .negative { color: var(--red); }
+
+    .dashboard {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 1rem;
+    }
+
+    .details { padding: 1rem; }
+    .details-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: .6rem;
+    }
+    .details h2 { margin: 0; font-size: 1.1rem; }
+    .detail-price { font-size: 1.6rem; font-weight: 800; }
+
+    .canvas-wrap { height: 360px; margin-top: .8rem; }
+
+    .side {
+      display: grid;
+      gap: .8rem;
+      align-content: start;
+    }
+
+    .metric {
+      padding: .8rem;
+      display: flex;
+      justify-content: space-between;
+      gap: .7rem;
+      align-items: baseline;
+    }
+
+    .metric small { color: var(--muted); display: block; }
+    .metric strong { font-size: 1rem; }
+
+    .prediction {
+      margin-top: .8rem;
+      padding: .8rem;
+      border-radius: 10px;
+      background: rgba(26, 35, 48, 0.85);
+      border: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: .6rem;
+    }
+
+    .prediction div { font-size: .9rem; }
+    .prediction b { display: block; font-size: 1rem; margin-top: .2rem; }
+
+    .status { color: var(--muted); font-size: .85rem; margin-top: .5rem; }
+
+    @media (max-width: 980px) {
+      .dashboard { grid-template-columns: 1fr; }
+      .canvas-wrap { height: 300px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="header">
+      <div class="title">
+        <h1>StockPulse</h1>
+        <p>Robinhood-style live dashboard with ML forecasts</p>
+      </div>
+      <div class="search-wrap">
+        <input id="tickerInput" placeholder="Search ticker (e.g. NVDA, TSLA)" value="AAPL" />
+        <button id="searchBtn">Load</button>
+      </div>
+    </section>
+
+    <section class="stocks-grid" id="watchlist"></section>
+
+    <section class="dashboard">
+      <article class="details">
+        <div class="details-top">
+          <div>
+            <h2 id="detailTitle">AAPL · Apple Inc.</h2>
+            <div class="detail-price" id="detailPrice">--</div>
+            <div class="change" id="detailChange">--</div>
+          </div>
+          <select id="rangeSelect">
+            <option value="1mo">1M</option>
+            <option value="3mo">3M</option>
+            <option value="6mo">6M</option>
+            <option value="1y" selected>1Y</option>
+            <option value="2y">2Y</option>
+          </select>
+        </div>
+
+        <div class="canvas-wrap"><canvas id="historyChart"></canvas></div>
+
+        <div class="prediction" id="predictionPanel">
+          <div>7-Day Forecast <b id="pred7">--</b></div>
+          <div>30-Day Forecast <b id="pred30">--</b></div>
+          <div>Confidence <b id="confidence">--</b></div>
+        </div>
+        <p class="status" id="status">Loading data…</p>
+      </article>
+
+      <aside class="side">
+        <div class="metric"><span><small>Volume</small><strong id="volume">--</strong></span></div>
+        <div class="metric"><span><small>Market Cap</small><strong id="marketCap">--</strong></span></div>
+        <div class="metric"><span><small>52-Week High</small><strong id="high52">--</strong></span></div>
+        <div class="metric"><span><small>52-Week Low</small><strong id="low52">--</strong></span></div>
+      </aside>
+    </section>
+  </main>
+
+<script>
+  const WATCHLIST = ["AAPL", "MSFT", "TSLA", "NVDA", "AMZN", "GOOGL"];
+  const quoteCache = new Map();
+  let historyChart;
+
+  const fmtCurrency = (v) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(v || 0);
+  const fmtCompact = (v) => new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 }).format(v || 0);
+  const pct = (n) => `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
+
+  async function fetchJsonWithFallback(url) {
+    const proxies = [
+      (u) => u,
+      (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+      (u) => `https://r.jina.ai/http://${u.replace(/^https?:\/\//, "")}`
+    ];
+
+    for (const proxy of proxies) {
+      try {
+        const res = await fetch(proxy(url));
+        if (!res.ok) continue;
+        const text = await res.text();
+        const data = text.trim().startsWith("{") ? JSON.parse(text) : JSON.parse(text.slice(text.indexOf("{")));
+        return data;
+      } catch (_) {}
+    }
+    throw new Error("Unable to fetch stock data from Yahoo endpoints.");
+  }
+
+  async function getQuote(symbol) {
+    const key = symbol.toUpperCase();
+    const quoteUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${key}`;
+    const data = await fetchJsonWithFallback(quoteUrl);
+    const quote = data?.quoteResponse?.result?.[0];
+    if (!quote) throw new Error(`Ticker ${key} not found`);
+    quoteCache.set(key, quote);
+    return quote;
+  }
+
+  async function getHistory(symbol, range = "1y") {
+    const key = symbol.toUpperCase();
+    const historyUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${key}?range=${range}&interval=1d&includePrePost=false`;
+    const data = await fetchJsonWithFallback(historyUrl);
+    const result = data?.chart?.result?.[0];
+    if (!result) throw new Error("No price history available");
+
+    const timestamps = result.timestamp || [];
+    const closes = result.indicators?.quote?.[0]?.close || [];
+    const points = timestamps
+      .map((t, i) => ({
+        date: new Date(t * 1000),
+        close: closes[i]
+      }))
+      .filter((p) => typeof p.close === "number");
+
+    return points;
+  }
+
+  function linearRegressionForecast(series, daysOut) {
+    const y = series.map((p) => p.close);
+    const n = y.length;
+    const x = y.map((_, i) => i + 1);
+    const sx = x.reduce((a, b) => a + b, 0);
+    const sy = y.reduce((a, b) => a + b, 0);
+    const sxy = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
+    const sxx = x.reduce((sum, xi) => sum + xi * xi, 0);
+
+    const slope = (n * sxy - sx * sy) / (n * sxx - sx * sx);
+    const intercept = (sy - slope * sx) / n;
+
+    const yMean = sy / n;
+    const ssTot = y.reduce((sum, yi) => sum + (yi - yMean) ** 2, 0);
+    const ssRes = y.reduce((sum, yi, i) => {
+      const pred = intercept + slope * x[i];
+      return sum + (yi - pred) ** 2;
+    }, 0);
+    const r2 = Math.max(0, Math.min(1, 1 - ssRes / ssTot || 0));
+
+    const forecast = [];
+    for (let i = 1; i <= daysOut; i++) {
+      const idx = n + i;
+      forecast.push(intercept + slope * idx);
+    }
+
+    return { forecast, confidence: Math.round((0.45 + r2 * 0.5) * 100) };
+  }
+
+  function sparklineConfig(canvas, values, isPositive) {
+    return new Chart(canvas, {
+      type: "line",
+      data: {
+        labels: values.map((_, i) => i),
+        datasets: [{ data: values, borderColor: isPositive ? "#00c805" : "#ff4b55", borderWidth: 1.8, pointRadius: 0, tension: 0.3 }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        scales: { x: { display: false }, y: { display: false } },
+        elements: { line: { fill: false } }
+      }
+    });
+  }
+
+  function renderMainChart(history, forecast7, forecast30) {
+    const labels = history.map((p) => p.date.toLocaleDateString());
+    const historyVals = history.map((p) => p.close);
+    const futureLabels = Array.from({ length: 30 }, (_, i) => `+${i + 1}d`);
+
+    const dataCombined = historyVals.concat(forecast30);
+    const historyDataset = historyVals.concat(Array(30).fill(null));
+    const f7Dataset = Array(historyVals.length).fill(null).concat(forecast7, Array(23).fill(null));
+    const f30Dataset = Array(historyVals.length).fill(null).concat(forecast30);
+
+    if (historyChart) historyChart.destroy();
+    historyChart = new Chart(document.getElementById("historyChart"), {
+      type: "line",
+      data: {
+        labels: labels.concat(futureLabels),
+        datasets: [
+          { label: "Historical Price", data: historyDataset, borderColor: "#23a6f8", pointRadius: 0, tension: 0.2, borderWidth: 2 },
+          { label: "7-Day Forecast", data: f7Dataset, borderColor: "#00c805", borderDash: [6, 4], pointRadius: 0, tension: 0.25, borderWidth: 2 },
+          { label: "30-Day Forecast", data: f30Dataset, borderColor: "#f59e0b", borderDash: [4, 4], pointRadius: 0, tension: 0.25, borderWidth: 2 }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: "#dbeafe" } },
+          tooltip: { mode: "index", intersect: false }
+        },
+        interaction: { mode: "nearest", intersect: false },
+        scales: {
+          x: { ticks: { color: "#a8b3cc", maxTicksLimit: 8 }, grid: { color: "rgba(80,100,130,.2)" } },
+          y: { ticks: { color: "#a8b3cc", callback: (v) => `$${v}` }, grid: { color: "rgba(80,100,130,.18)" } }
+        }
+      }
+    });
+  }
+
+  async function renderWatchlist() {
+    const el = document.getElementById("watchlist");
+    el.innerHTML = "";
+    for (const symbol of WATCHLIST) {
+      try {
+        const quote = await getQuote(symbol);
+        const history = await getHistory(symbol, "1mo");
+        const values = history.slice(-20).map((p) => p.close);
+        const isPositive = quote.regularMarketChangePercent >= 0;
+
+        const card = document.createElement("article");
+        card.className = "card";
+        card.innerHTML = `
+          <div class="ticker"><strong>${quote.symbol}</strong><span>${quote.shortName || ""}</span></div>
+          <div class="price">${fmtCurrency(quote.regularMarketPrice)}</div>
+          <div class="change ${isPositive ? "positive" : "negative"}">${pct(quote.regularMarketChangePercent)}</div>
+          <div style="height:48px"><canvas></canvas></div>
+        `;
+        card.onclick = () => loadTicker(quote.symbol);
+        el.appendChild(card);
+        sparklineConfig(card.querySelector("canvas"), values, isPositive);
+      } catch (_) {}
+    }
+  }
+
+  async function loadTicker(rawSymbol) {
+    const symbol = rawSymbol.trim().toUpperCase();
+    if (!symbol) return;
+
+    const status = document.getElementById("status");
+    status.textContent = `Loading ${symbol}...`;
+
+    try {
+      const [quote, history] = await Promise.all([
+        getQuote(symbol),
+        getHistory(symbol, document.getElementById("rangeSelect").value)
+      ]);
+
+      const { forecast: forecast7, confidence } = linearRegressionForecast(history.slice(-120), 7);
+      const { forecast: forecast30 } = linearRegressionForecast(history.slice(-180), 30);
+      renderMainChart(history, forecast7, forecast30);
+
+      const isPositive = quote.regularMarketChangePercent >= 0;
+      document.getElementById("detailTitle").textContent = `${quote.symbol} · ${quote.longName || quote.shortName || ""}`;
+      document.getElementById("detailPrice").textContent = fmtCurrency(quote.regularMarketPrice);
+      document.getElementById("detailChange").className = `change ${isPositive ? "positive" : "negative"}`;
+      document.getElementById("detailChange").textContent = `${pct(quote.regularMarketChangePercent)} (${fmtCurrency(quote.regularMarketChange)})`;
+
+      document.getElementById("volume").textContent = fmtCompact(quote.regularMarketVolume);
+      document.getElementById("marketCap").textContent = fmtCompact(quote.marketCap);
+      document.getElementById("high52").textContent = fmtCurrency(quote.fiftyTwoWeekHigh);
+      document.getElementById("low52").textContent = fmtCurrency(quote.fiftyTwoWeekLow);
+
+      const f7 = forecast7.at(-1);
+      const f30 = forecast30.at(-1);
+      document.getElementById("pred7").textContent = `${fmtCurrency(f7)} (${pct(((f7 / quote.regularMarketPrice) - 1) * 100)})`;
+      document.getElementById("pred30").textContent = `${fmtCurrency(f30)} (${pct(((f30 / quote.regularMarketPrice) - 1) * 100)})`;
+      document.getElementById("confidence").textContent = `${confidence}%`;
+      document.getElementById("confidence").className = confidence >= 70 ? "positive" : confidence >= 55 ? "" : "negative";
+
+      status.textContent = `Updated ${new Date().toLocaleTimeString()}. Data source: Yahoo Finance free endpoints.`;
+    } catch (err) {
+      status.textContent = `Error: ${err.message}`;
+    }
+  }
+
+  document.getElementById("searchBtn").addEventListener("click", () => loadTicker(document.getElementById("tickerInput").value));
+  document.getElementById("tickerInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") loadTicker(e.target.value);
+  });
+  document.getElementById("rangeSelect").addEventListener("change", () => loadTicker(document.getElementById("detailTitle").textContent.split(" · ")[0]));
+
+  async function init() {
+    await renderWatchlist();
+    await loadTicker(document.getElementById("tickerInput").value);
+    setInterval(() => loadTicker(document.getElementById("detailTitle").textContent.split(" · ")[0]), 60000);
+  }
+
+  init();
+</script>
+</body>
+</html>
