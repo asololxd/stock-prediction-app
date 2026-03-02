@@ -212,6 +212,7 @@
 
 <script>
   const WATCHLIST = ["AAPL", "MSFT", "TSLA", "NVDA", "AMZN", "GOOGL"];
+  const quoteCache = new Map();
   let historyChart;
 
   const fmtCurrency = (v) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(v || 0);
@@ -244,6 +245,7 @@
     const data = await fetchYahooJson(quoteUrl);
     const quote = data?.quoteResponse?.result?.[0];
     if (!quote) throw new Error(`Ticker ${key} not found`);
+    quoteCache.set(key, quote);
     return quote;
   }
 
@@ -317,7 +319,6 @@
     const historyVals = history.map((p) => p.close);
     const futureLabels = Array.from({ length: 30 }, (_, i) => `+${i + 1}d`);
 
-    const dataCombined = historyVals.concat(forecast30);
     const historyDataset = historyVals.concat(Array(30).fill(null));
     const f7Dataset = Array(historyVals.length).fill(null).concat(forecast7, Array(23).fill(null));
     const f30Dataset = Array(historyVals.length).fill(null).concat(forecast30);
@@ -409,7 +410,7 @@
       document.getElementById("confidence").textContent = `${confidence}%`;
       document.getElementById("confidence").className = confidence >= 70 ? "positive" : confidence >= 55 ? "" : "negative";
 
-      status.textContent = `Updated ${new Date().toLocaleTimeString()}. Data source: Yahoo Finance free endpoints.`;
+      status.textContent = `Updated ${new Date().toLocaleTimeString()}. Data source: Yahoo Finance via AllOrigins proxy.`;
     } catch (err) {
       status.textContent = `Error: ${err.message}`;
     }
