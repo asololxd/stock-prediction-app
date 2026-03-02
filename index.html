@@ -212,7 +212,6 @@
 
 <script>
   const WATCHLIST = ["AAPL", "MSFT", "TSLA", "NVDA", "AMZN", "GOOGL"];
-  const quoteCache = new Map();
   let historyChart;
 
   const fmtCurrency = (v) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(v || 0);
@@ -245,7 +244,6 @@
     const data = await fetchYahooJson(quoteUrl);
     const quote = data?.quoteResponse?.result?.[0];
     if (!quote) throw new Error(`Ticker ${key} not found`);
-    quoteCache.set(key, quote);
     return quote;
   }
 
