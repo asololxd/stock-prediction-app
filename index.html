@@ -219,29 +219,30 @@
   const fmtCompact = (v) => new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 }).format(v || 0);
   const pct = (n) => `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 
-  async function fetchJsonWithFallback(url) {
-    const proxies = [
-      (u) => u,
-      (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
-      (u) => `https://r.jina.ai/http://${u.replace(/^https?:\/\//, "")}`
-    ];
+  async function fetchYahooJson(url) {
+    const wrapped = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+    const res = await fetch(wrapped);
+    if (!res.ok) throw new Error("Unable to reach AllOrigins proxy.");
 
-    for (const proxy of proxies) {
-      try {
-        const res = await fetch(proxy(url));
-        if (!res.ok) continue;
-        const text = await res.text();
-        const data = text.trim().startsWith("{") ? JSON.parse(text) : JSON.parse(text.slice(text.indexOf("{")));
-        return data;
-      } catch (_) {}
+    const payload = await res.json();
+    const contents = payload?.contents;
+    if (!contents || typeof contents !== "string") {
+      throw new Error("AllOrigins returned an empty payload.");
     }
-    throw new Error("Unable to fetch stock data from Yahoo endpoints.");
+
+    try {
+      return JSON.parse(contents);
+    } catch {
+      const firstBrace = contents.indexOf("{");
+      if (firstBrace === -1) throw new Error("AllOrigins response is not valid JSON.");
+      return JSON.parse(contents.slice(firstBrace));
+    }
   }
 
   async function getQuote(symbol) {
     const key = symbol.toUpperCase();
     const quoteUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${key}`;
-    const data = await fetchJsonWithFallback(quoteUrl);
+    const data = await fetchYahooJson(quoteUrl);
     const quote = data?.quoteResponse?.result?.[0];
     if (!quote) throw new Error(`Ticker ${key} not found`);
     quoteCache.set(key, quote);
@@ -251,7 +252,7 @@
   async function getHistory(symbol, range = "1y") {
     const key = symbol.toUpperCase();
     const historyUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${key}?range=${range}&interval=1d&includePrePost=false`;
-    const data = await fetchJsonWithFallback(historyUrl);
+    const data = await fetchYahooJson(historyUrl);
     const result = data?.chart?.result?.[0];
     if (!result) throw new Error("No price history available");
 
@@ -318,7 +319,6 @@
     const historyVals = history.map((p) => p.close);
     const futureLabels = Array.from({ length: 30 }, (_, i) => `+${i + 1}d`);
 
-    const dataCombined = historyVals.concat(forecast30);
     const historyDataset = historyVals.concat(Array(30).fill(null));
     const f7Dataset = Array(historyVals.length).fill(null).concat(forecast7, Array(23).fill(null));
     const f30Dataset = Array(historyVals.length).fill(null).concat(forecast30);
@@ -410,7 +410,7 @@
       document.getElementById("confidence").textContent = `${confidence}%`;
       document.getElementById("confidence").className = confidence >= 70 ? "positive" : confidence >= 55 ? "" : "negative";
 
-      status.textContent = `Updated ${new Date().toLocaleTimeString()}. Data source: Yahoo Finance free endpoints.`;
+      status.textContent = `Updated ${new Date().toLocaleTimeString()}. Data source: Yahoo Finance via AllOrigins proxy.`;
     } catch (err) {
       status.textContent = `Error: ${err.message}`;
     }
